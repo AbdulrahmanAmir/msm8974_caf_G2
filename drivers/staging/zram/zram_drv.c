@@ -48,6 +48,8 @@
 static int zram_major;
 static struct zram *zram_devices;
 
+int init_done_old = 0; // AP: Simulate initstate behaviour of zRam driver of 3.0.x kernels
+
 /*
  * We don't need to see memory allocation errors more than once every 1
  * second to know that a problem is occurring.
@@ -75,7 +77,7 @@ static ssize_t initstate_show(struct device *dev,
 {
 	struct zram *zram = dev_to_zram(dev);
 
-	return sprintf(buf, "%u\n", zram->init_done);
+	return sprintf(buf, "%u\n", (zram->init_done && init_done_old));
 }
 
 static ssize_t num_reads_show(struct device *dev,
@@ -609,6 +611,7 @@ static void zram_reset_device(struct zram *zram, bool reset_capacity)
 
 	meta = zram->meta;
 	zram->init_done = 0;
+	init_done_old = 0;
 
 	/* Free all pages that are still in this zram device */
 	for (index = 0; index < zram->disksize >> PAGE_SHIFT; index++) {
@@ -828,6 +831,8 @@ static void zram_make_request(struct request_queue *queue, struct bio *bio)
 	__zram_make_request(zram, bio, bio_data_dir(bio));
 	up_read(&zram->init_lock);
 
+	init_done_old = 1;
+	
 	return;
 
 error:
