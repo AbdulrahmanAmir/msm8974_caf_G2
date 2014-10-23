@@ -1077,11 +1077,6 @@ config TOUCHSCREEN_GT9XX
 
           If unsure, say N.
 
-config TOUCHSCREEN_DOUBLETAP2WAKE
-	tristate "DoubleTap2Wake for touchscreens"
-	select TOUCHSCREEN_PREVENT_SLEEP
-	default n
-
 config TOUCHSCREEN_SYNAPTICS_DISNEY
 	bool "LGE CORE with Synaptics for Disney"
 	help
