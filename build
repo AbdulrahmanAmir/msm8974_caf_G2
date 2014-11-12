@@ -93,22 +93,10 @@ case "$panel" in
 esac
 done
 
-echo "Pick target..."
-select target in lg aosp
-do
-case "$target" in
-	"lg")
-		# Already set
-		rdflag=1
-		rom="LG"
-		break;;
-	"aosp")
 		rdflag=2
 		rom="LP"
 		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp
-		break;;
-esac
-done
+
 
 # Begin commands
 rm -rf /home/llama/kernel/out/*
@@ -122,32 +110,19 @@ rm -rf /home/llama/kernel/out/*
 			make clean && make mrproper
 			echo "Working directory cleaned...";
 
-
-	read -p "Begin build now..(y/n)? : " dchoice
-	case "$dchoice" in
-		y|Y)
 			make "$config"
 			make "$jobcount"
-			exit 0;;
-		n|N )
-			echo "Skipping...";;
-	esac
 
 
-if [ $rdflag = 1 ]; then
-	echo "Using prebuilt ramdisk..."
-elif [ $rdflag = 2 ]; then
+
 	echo "Creating AOSP Ramdisk..."
-	./mkbootfs /home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp/  | gzip > /home/llama/kernel/out/ramdisk.gz
+	./tools_boeffla/mkbootfs /home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp/  | gzip > /home/llama/kernel/out/ramdisk.gz
 	ramdisk=/home/llama/kernel/out/ramdisk.gz
-else
-	echo "No ramdisk found..."
-	exit 0;
-fi
+
 
 echo "Making DT.img..."
 if [ -f arch/arm/boot/$kerneltype ]; then
-	./dtbTool -s 2048 -o /home/llama/kernel/out/dt.img arch/arm/boot/
+	./tools_boeffla/dtbTool -s 2048 -o /home/llama/kernel/out/dt.img arch/arm/boot/
 else
 	echo "No build found..."
 	exit 0;
@@ -155,7 +130,7 @@ fi
 
 echo "Making boot.img..."
 if [ -f arch/arm/boot/"$kerneltype" ]; then
-	./mkbootimg --kernel arch/arm/boot/"$kerneltype" --ramdisk $ramdisk --cmdline "$cmdline" --base $base --pagesize $pagesize --offset $ramdisk_offset --tags-addr $tags_offset --dt /home/llama/kernel/out/dt.img -o ozip/boot.img
+	./tools_boeffla/mkbootimg --kernel arch/arm/boot/"$kerneltype" --ramdisk $ramdisk --cmdline "$cmdline" --base $base --pagesize $pagesize --offset $ramdisk_offset --tags-addr $tags_offset --dt /home/llama/kernel/out/dt.img -o ozip/boot.img
 else
 	echo "No build found..."
 	exit 0;
