@@ -588,6 +588,11 @@ CONFIG_MSM_QMI_INTERFACE=y
 # CONFIG_MSM_TEST_QMI_CLIENT is not set
 # CONFIG_MSM_DALRPC is not set
 # CONFIG_MSM_CPU_FREQ_SET_MIN_MAX is not set
+<<<<<<< HEAD
+=======
+CONFIG_CPU_VOLTAGE_TABLE=y
+CONFIG_MSM_CPUFREQ_LIMITER=y
+>>>>>>> ff24d4b... Voltage Control: generic voltage control for DTS based kernels
 CONFIG_MSM_DEVFREQ_CPUBW=y
 # CONFIG_MSM_AVS_HW is not set
 # CONFIG_MSM_HW3D is not set
