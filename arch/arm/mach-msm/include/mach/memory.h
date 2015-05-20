@@ -34,7 +34,6 @@
 #else
 #error "Adress for kexec hardboot page not defined"
 #endif
-#endif
 
 
 #ifndef __ASSEMBLY__
