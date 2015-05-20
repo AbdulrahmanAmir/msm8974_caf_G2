@@ -554,6 +554,32 @@
  *	- added macros to exclude hotplugging functionality (default in this version is disabled=commented for opo devices because of mpdecision
  *	  in general and unmotivated kernel crashes when using it without mpdecision) in addition disable hopplugging per default if hotplugging
  *	  code is used to avoid accetential usage of mpdecision and buildin governor hotplugging at the same time
+ *
+ * Version 1.0 beta2 (bugfix!)
+ *
+ *	- avoid kernel crash (usually a oops in smp.c) by checking if a core is online before putting work on it: this problem appeared on opo qualcomm
+ *	  platform with proprietary mpdecision hotplugging service. assumption is that there is a delay between initiating hotplugging events from 'userland'
+ *	  and gathering core state info in 'kernel land' so under some rare circumestances the governor doesn't 'know about' a changed core state and tries to
+ *	  put work on a meanwhile offline core or that hotplug event happend during putting work on a core in the governor.
+ *
+ * Version 1.0 beta3 (bugfix!)
+ *
+ *	- changed back canceling of dbs work to syncron instead of asyncron in dbs_timer_exit function to avoid random kernel chrashes (again oops in smp.c)
+ *	  when using this governor with the cpufreq implementation of kernel versions 3.10+. problem was initiated by governor restarts during hotplugging
+ *	- as an additional precaution check if a core is online before doing critical stuff in dbs_check_cpu main function (might be removeable at a later
+ *	  time, more analyses/tests will show)
+ *
+ * Version 1.0 beta4 (sync)
+ *
+ *	- removed all previous kernel crash fix attempts and precautions as only the real fix of canceling dbs work syncron introduced in beta3 is needed.
+ *
+ * Version 1.0 beta5
+ *
+ *	- added the possibility to use buildin hotplugging also on qualcomm platform. by defining the maco QCOM_NATIVE_HOTPLUGGING u can enable the
+ *	  needed additional changes. Be aware that on qualcomm platform hotplugging from the usual present mpdecision userspace service has to be disabled
+ *	  before using native hotplugging in the governor. you can achieve that by switching all cores to forced online mode via sysfs for example by doing
+ *	  this: echo "1" >/sys/devices/system/cpu/cpu0/online_control from shell
+ *	- fixed internal non-setting of all hotplug down threshold values for hotplugging when switching to any profile settings
  * ---------------------------------------------------------------------------------------------------------------------------------------------------------
  * -                                                                                                                                                       -
  * ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -586,13 +612,16 @@
 #endif
 
 // Yank: enable/disable sysfs interface to display current zzmoove version
-#define ZZMOOVE_VERSION "1.0 beta1"
+#define ZZMOOVE_VERSION "1.0 beta5"
 
 // ZZ: support for 2,4 or 8 cores (this will enable/disable hotplug threshold tuneables)
 #define MAX_CORES					(4)
 
 // ZZ: enable/disable hotplug support
-// #define ENABLE_HOTPLUGGING
+#define ENABLE_HOTPLUGGING
+
+// ZZ: in addition support for native hotplugging on qualcomm platform
+#define QCOM_NATIVE_HOTPLUGGING
 
 // ZZ: enable for sources with backported cpufreq implementation of 3.10 kernel
 #define CPU_IDLE_TIME_IN_CPUFREQ
@@ -1985,6 +2014,41 @@ static struct notifier_block dbs_cpufreq_notifier_block = {
 	.notifier_call = dbs_cpufreq_notifier
 };
 
+static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
+						  cputime64_t *wall)
+{
+	u64 idle_time;
+	u64 cur_wall_time;
+	u64 busy_time;
+
+	cur_wall_time = jiffies64_to_cputime64(get_jiffies_64());
+
+	busy_time  = kcpustat_cpu(cpu).cpustat[CPUTIME_USER];
+	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SYSTEM];
+	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_IRQ];
+	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_SOFTIRQ];
+	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_STEAL];
+	busy_time += kcpustat_cpu(cpu).cpustat[CPUTIME_NICE];
+
+	idle_time = cur_wall_time - busy_time;
+	if (wall)
+		*wall = jiffies_to_usecs(cur_wall_time);
+
+	return jiffies_to_usecs(idle_time);
+}
+
+static inline cputime64_t get_cpu_idle_time(unsigned int cpu,
+					    cputime64_t *wall)
+{
+	u64 idle_time = get_cpu_idle_time_us(cpu, wall);
+
+	if (idle_time == -1ULL)
+		idle_time = get_cpu_idle_time_jiffy(cpu, wall);
+	else if (!io_is_busy)
+		idle_time += get_cpu_iowait_time_us(cpu, wall);
+
+	return idle_time;
+}
 /************************** sysfs interface **************************/
 static ssize_t show_sampling_rate_min(struct kobject *kobj, struct attribute *attr, char *buf)
 {
@@ -3488,7 +3552,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug1 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug1 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug1 = zzmoove_profiles[i].down_threshold_hotplug1;
-		    hotplug_thresholds[0][0] = zzmoove_profiles[i].down_threshold_hotplug1;
+		    hotplug_thresholds[1][0] = zzmoove_profiles[i].down_threshold_hotplug1;
 		}
 #if (MAX_CORES == 4 || MAX_CORES == 8)
 		// ZZ: set down_threshold_hotplug2 value
@@ -3496,7 +3560,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug2 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug2 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug2 = zzmoove_profiles[i].down_threshold_hotplug2;
-		    hotplug_thresholds[0][1] = zzmoove_profiles[i].down_threshold_hotplug2;
+		    hotplug_thresholds[1][1] = zzmoove_profiles[i].down_threshold_hotplug2;
 		}
 
 		// ZZ: set down_threshold_hotplug3 value
@@ -3504,7 +3568,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug3 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug3 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug3 = zzmoove_profiles[i].down_threshold_hotplug3;
-		    hotplug_thresholds[0][2] = zzmoove_profiles[i].down_threshold_hotplug3;
+		    hotplug_thresholds[1][2] = zzmoove_profiles[i].down_threshold_hotplug3;
 		}
 #endif
 #if (MAX_CORES == 8)
@@ -3513,7 +3577,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug4 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug4 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug4 = zzmoove_profiles[i].down_threshold_hotplug4;
-		    hotplug_thresholds[0][3] = zzmoove_profiles[i].down_threshold_hotplug4;
+		    hotplug_thresholds[1][3] = zzmoove_profiles[i].down_threshold_hotplug4;
 		}
 
 		// ZZ: set down_threshold_hotplug5 value
@@ -3521,7 +3585,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug5 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug5 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug5 = zzmoove_profiles[i].down_threshold_hotplug5;
-		    hotplug_thresholds[0][4] = zzmoove_profiles[i].down_threshold_hotplug5;
+		    hotplug_thresholds[1][4] = zzmoove_profiles[i].down_threshold_hotplug5;
 		}
 
 		// ZZ: set down_threshold_hotplug6 value
@@ -3529,7 +3593,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug6 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug6 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug6 = zzmoove_profiles[i].down_threshold_hotplug6;
-		    hotplug_thresholds[0][5] = zzmoove_profiles[i].down_threshold_hotplug6;
+		    hotplug_thresholds[1][5] = zzmoove_profiles[i].down_threshold_hotplug6;
 		}
 
 		// ZZ: set down_threshold_hotplug7 value
@@ -3537,7 +3601,7 @@ static inline int set_profile(int profile_num)
 		    && zzmoove_profiles[i].down_threshold_hotplug7 >= 1)
 		    || zzmoove_profiles[i].down_threshold_hotplug7 == 0) {
 		    dbs_tuners_ins.down_threshold_hotplug7 = zzmoove_profiles[i].down_threshold_hotplug7;
-		    hotplug_thresholds[0][6] = zzmoove_profiles[i].down_threshold_hotplug7;
+		    hotplug_thresholds[1][6] = zzmoove_profiles[i].down_threshold_hotplug7;
 		}
 #endif
 		// ZZ: set down_threshold_hotplug_freq1 value
@@ -4721,10 +4785,8 @@ static struct attribute_group dbs_attr_group = {
 
 static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 {
-	unsigned int load = 0;
-	unsigned int max_load = 0;
+	unsigned int j, load = 0, max_load = 0;
 	struct cpufreq_policy *policy;
-	unsigned int j;
 
 	boost_freq = false;					// ZZ: reset early demand boost freq flag
 #ifdef ENABLE_HOTPLUGGING
@@ -5138,8 +5200,8 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		    > dbs_tuners_ins.freq_limit)
 		    this_dbs_info->requested_freq = dbs_tuners_ins.freq_limit;
 
-		__cpufreq_driver_target(policy, this_dbs_info->requested_freq,
-			CPUFREQ_RELATION_L);							// ZZ: changed to relation low
+		    __cpufreq_driver_target(policy, this_dbs_info->requested_freq,
+			    CPUFREQ_RELATION_L);							// ZZ: changed to relation low
 		return;
 	}
 }
@@ -5315,7 +5377,7 @@ static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 static inline void dbs_timer_exit(struct cpu_dbs_info_s *dbs_info)
 {
 	dbs_info->enable = 0;
-	cancel_delayed_work(&dbs_info->work);		// ZZ: use asyncronous mode to avoid freezes/reboots when leaving zzmoove
+	cancel_delayed_work_sync(&dbs_info->work);
 #ifdef CONFIG_EXYNOS4_EXPORT_TEMP
 	cancel_delayed_work(&tmu_read_work);		// ZZ: cancel cpu temperature reading
 #endif
@@ -5574,7 +5636,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	struct cpu_dbs_info_s *this_dbs_info;
 	unsigned int j;
 	int rc;
-#ifdef ENABLE_HOTPLUGGING
+#if defined(ENABLE_HOTPLUGGING) && !defined(QCOM_NATIVE_HOTPLUGGING)
 	int i = 0;
 #endif
 	this_dbs_info = &per_cpu(cs_cpu_dbs_info, cpu);
@@ -5624,7 +5686,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		freq_init_count = 0;						// ZZ: reset init flag for governor reload
 		system_freq_table = cpufreq_frequency_get_table(0);		// ZZ: update static system frequency table
 		evaluate_scaling_order_limit_range(1, 0, 0, policy->max);	// ZZ: table order detection and limit optimizations
-#ifdef ENABLE_HOTPLUGGING
+#if defined(ENABLE_HOTPLUGGING) && !defined(QCOM_NATIVE_HOTPLUGGING)
 		// ZZ: save default values in threshold array
 		for (i = 0; i < possible_cpus; i++) {
 		    hotplug_thresholds[0][i] = DEF_FREQUENCY_UP_THRESHOLD_HOTPLUG;
@@ -5705,7 +5767,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		 * ZZ: enable all cores to avoid cores staying in offline state
 		 * when changing to a non-hotplugging-able governor
 		 */
-#ifdef ENABLE_HOTPLUGGING
+#if defined(ENABLE_HOTPLUGGING) && !defined(QCOM_NATIVE_HOTPLUGGING)
 		enable_cores = true;
 		queue_work_on(0, dbs_wq, &hotplug_online_work);
 #endif
