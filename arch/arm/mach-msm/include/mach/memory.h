@@ -20,6 +20,17 @@
 /* physical offset of RAM */
 #define PLAT_PHYS_OFFSET UL(CONFIG_PHYS_OFFSET)
 
+#define MAX_PHYSMEM_BITS 32
+#define SECTION_SIZE_BITS 28
+
+/* Maximum number of Memory Regions
+*  The largest system can have 4 memory banks, each divided into 8 regions
+*/
+#define MAX_NR_REGIONS 32
+
+/* The number of regions each memory bank is divided into */
+#define NR_REGIONS_PER_BANK 8
+
 #if defined(CONFIG_KEXEC_HARDBOOT)
 #if defined(CONFIG_MACH_APQ8064_FLO)
 #define KEXEC_HB_PAGE_ADDR		UL(0x88C00000)
@@ -33,6 +44,13 @@
 #define KEXEC_HB_KERNEL_LOC 		UL(0x22000000)
 #else
 #error "Adress for kexec hardboot page not defined"
+#endif
+
+#if defined(CONFIG_ARCH_MSM7X30)
+
+#define EBI0_PHYS_OFFSET PHYS_OFFSET
+#define EBI0_PAGE_OFFSET PAGE_OFFSET
+#define EBI0_SIZE 0x10000000
 #endif
 
 
