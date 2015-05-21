@@ -10,15 +10,14 @@
  */
 #include <linux/linkage.h>
 
-<<<<<<< HEAD
-=======
+
 #ifdef CONFIG_KEXEC_HARDBOOT
 #include <asm/kexec.h>
 #include <asm/memory.h>
 #endif
 
 	.arch	armv7-a
->>>>>>> 7cabbe8... Merge Kexec Hardboot (Multy Kernel Boot code) Thanks to @PatrikKT
+
 /*
  * Debugging stuff
  *
