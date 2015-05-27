@@ -1,0 +1,175 @@
+#!/bin/bash
+
+# Kernel Details
+VER=Boeffla-Kernel
+
+# Vars
+export LOCALVERSION=~`echo $VER`
+export ARCH=arm
+export SUBARCH=arm
+#export KBUILD_BUILD_USER=RenderBroken
+#export KBUILD_BUILD_HOST=RenderServer.net
+export CCACHE=ccache
+
+build=/home/llama/kernel/out/
+kernel="BoefflaKernel"
+
+##### Main Toolchain
+toolchain=/home/llama/bliss/prebuilts/gcc/linux-x86/arm/arm-eabi-5.1-linaro/bin/
+#####
+
+##### Test Toolchain
+#toolchain=/home/renderbroken/android/source/toolchains/linaro-arm-eabi-4.10/bin
+#####
+
+toolchain2="arm-eabi-"
+kerneltype="zImage"
+jobcount="-j8"
+base=0x00000000
+pagesize=2048
+ramdisk_offset=0x05000000
+tags_offset=0x04800000
+CURRENTDATE=$(date +"%m-%d")
+
+chmod 777 mkbootfs
+
+echo "Pick variant..."
+select choice in d800 d801 d802 d803 ls980 vs980 f320x l01f
+do
+case "$choice" in
+	"d800")
+		variant="d800"
+		config="d800_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d800.lz4
+		break;;
+	"d801")
+		variant="d801"
+		config="d801_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d801.lz4
+		break;;
+	"d802")
+		variant="d802"
+		config="d802_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d802.lz4
+		break;;
+	"d803")
+		variant="d803"
+		config="d803_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d803.lz4
+		break;;
+	"ls980")
+		variant="ls980"
+		config="ls980_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/ls980.lz4
+		break;;
+	"vs980")
+		variant="vs980"
+		config="vs980_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/vs980.lz4
+		break;;
+	"f320x")
+		variant="f320x"
+		config="f320x_defconfig"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
+		break;;
+	"l01f")
+		variant="l01f"
+		config="l01f_defconfig"
+#		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
+		break;;
+esac
+done
+
+echo "Panel variant..."
+select panel in lgd jdi
+do
+case "$panel" in
+	"lgd")
+		cmdline="console=ttyHSL0,115200,n8 androidboot.hardware=g2 user_debug=31 msm_rtb.filter=0x0 mdss_mdp.panel=1:dsi:0:qcom,mdss_dsi_g2_lgd_cmd androidboot.selinux=permissive"
+		break;;
+	"jdi")
+		cmdline="console=ttyHSL0,115200,n8 androidboot.hardware=g2 user_debug=31 msm_rtb.filter=0x0 mdss_mdp.panel=1:dsi:0:qcom,mdss_dsi_g2_jdi_cmd androidboot.selinux=permissive"
+		break;;
+esac
+done
+
+echo "Pick target..."
+select target in lg aosp
+do
+case "$target" in
+	"lg")
+		# Already set
+		rdflag=1
+		rom="LG"
+		break;;
+	"aosp")
+		rdflag=2
+		rom="LP"
+		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp
+		break;;
+esac
+done
+
+# Begin commands
+rm -rf /home/llama/kernel/out/*
+
+			export ARCH=arm
+			export CROSS_COMPILE=$toolchain/"$toolchain2"
+			rm -rf ozip/boot.img
+			rm -rf ozip/system/lib/modules
+			rm -rf arch/arm/boot/"$kerneltype"
+			mkdir -p ozip/system/lib/modules
+			make clean && make mrproper
+			echo "Working directory cleaned...";
+
+
+	read -p "Begin build now..(y/n)? : " dchoice
+	case "$dchoice" in
+		y|Y)
+			make "$config"
+			make "$jobcount"
+			exit 0;;
+		n|N )
+			echo "Skipping...";;
+	esac
+
+
+if [ $rdflag = 1 ]; then
+	echo "Using prebuilt ramdisk..."
+elif [ $rdflag = 2 ]; then
+	echo "Creating AOSP Ramdisk..."
+	./mkbootfs /home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp/  | gzip > /home/llama/kernel/out/ramdisk.gz
+	ramdisk=/home/llama/kernel/out/ramdisk.gz
+else
+	echo "No ramdisk found..."
+	exit 0;
+fi
+
+echo "Making DT.img..."
+if [ -f arch/arm/boot/$kerneltype ]; then
+	./dtbTool -s 2048 -o /home/llama/kernel/out/dt.img arch/arm/boot/
+else
+	echo "No build found..."
+	exit 0;
+fi
+
+echo "Making boot.img..."
+if [ -f arch/arm/boot/"$kerneltype" ]; then
+	./mkbootimg --kernel arch/arm/boot/"$kerneltype" --ramdisk $ramdisk --cmdline "$cmdline" --base $base --pagesize $pagesize --offset $ramdisk_offset --tags-addr $tags_offset --dt /home/llama/kernel/out/dt.img -o ozip/boot.img
+else
+	echo "No build found..."
+	exit 0;
+fi
+
+echo "Kernel Bump Boot.img..."
+sh kernel_bump.sh
+mv ozip/boot_bumped.img ozip/boot.img
+echo "Kernel BUMP done!";
+
+echo "Zipping..."
+cd ozip
+zip -r ../"$kernel"-"$rom"_"$variant"-bumped.zip .
+mv ../"$kernel"-"$rom"_"$variant"-bumped.zip $build
+cd ..
+rm -rf /home/llama/kernel/out/g2/*
+echo "Done..."
