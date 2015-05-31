@@ -1,21 +1,21 @@
 #!/bin/bash
 
 # Kernel Details
-VER=Boeffla-Kernel
+VER=Llama-Sweet
 
 # Vars
 export LOCALVERSION=~`echo $VER`
 export ARCH=arm
 export SUBARCH=arm
-#export KBUILD_BUILD_USER=RenderBroken
-#export KBUILD_BUILD_HOST=RenderServer.net
+export KBUILD_BUILD_USER=genesixxbf3
+export KBUILD_BUILD_HOST=
 export CCACHE=ccache
 
 build=/home/llama/kernel/out/
-kernel="BoefflaKernel"
+kernel="LlamaSweet"
 
 ##### Main Toolchain
-toolchain=/home/llama/bliss/prebuilts/gcc/linux-x86/arm/arm-eabi-5.1-linaro/bin/
+toolchain=/home/llama/bliss/prebuilts/gcc/linux-x86/arm/arm-eabi-6.0-linaro/bin/
 #####
 
 ##### Test Toolchain
@@ -24,14 +24,12 @@ toolchain=/home/llama/bliss/prebuilts/gcc/linux-x86/arm/arm-eabi-5.1-linaro/bin/
 
 toolchain2="arm-eabi-"
 kerneltype="zImage"
-jobcount="-j8"
+jobcount="-j5"
 base=0x00000000
 pagesize=2048
 ramdisk_offset=0x05000000
 tags_offset=0x04800000
 CURRENTDATE=$(date +"%m-%d")
-
-chmod 777 mkbootfs
 
 echo "Pick variant..."
 select choice in d800 d801 d802 d803 ls980 vs980 f320x l01f
@@ -40,42 +38,42 @@ case "$choice" in
 	"d800")
 		variant="d800"
 		config="d800_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d800.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d800.lz4
 		break;;
 	"d801")
 		variant="d801"
 		config="d801_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d801.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d801.lz4
 		break;;
 	"d802")
 		variant="d802"
 		config="d802_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d802.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d802.lz4
 		break;;
 	"d803")
 		variant="d803"
 		config="d803_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d803.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/d803.lz4
 		break;;
 	"ls980")
 		variant="ls980"
 		config="ls980_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/ls980.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/ls980.lz4
 		break;;
 	"vs980")
 		variant="vs980"
 		config="vs980_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/vs980.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/vs980.lz4
 		break;;
 	"f320x")
 		variant="f320x"
 		config="f320x_defconfig"
-		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
+		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
 		break;;
 	"l01f")
 		variant="l01f"
 		config="l01f_defconfig"
-#		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
+#		ramdisk=home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk/f320x.lz4
 		break;;
 esac
 done
@@ -93,14 +91,27 @@ case "$panel" in
 esac
 done
 
+echo "Pick target..."
+select target in lg aosp
+do
+case "$target" in
+	"lg")
+		# Already set
+		rdflag=1
+		rom="LG"
+		break;;
+	"aosp")
 		rdflag=2
 		rom="LP"
 		ramdisk=/home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp
+		break;;
+esac
+done
 
 
-# Begin commands
-rm -rf /home/llama/kernel/out/*
-
+	read -p "Previous build found, clean working directory..(y/n)? : " cchoice
+	case "$cchoice" in
+		y|Y )
 			export ARCH=arm
 			export CROSS_COMPILE=$toolchain/"$toolchain2"
 			rm -rf ozip/boot.img
@@ -108,21 +119,34 @@ rm -rf /home/llama/kernel/out/*
 			rm -rf arch/arm/boot/"$kerneltype"
 			mkdir -p ozip/system/lib/modules
 			make clean && make mrproper
-			echo "Working directory cleaned...";
-
+			echo "Working directory cleaned...";;
+		n|N )
+			echo "Skipping...";;
+	esac
+	read -p "Begin build now..(y/n)? : " dchoice
+	case "$dchoice" in
+		y|Y)
 			make "$config"
 			make "$jobcount"
+			exit 0;;
+		n|N )
+			echo "Skipping...";;
+	esac
 
-
-
+if [ $rdflag = 1 ]; then
+	echo "Using prebuilt ramdisk..."
+elif [ $rdflag = 2 ]; then
 	echo "Creating AOSP Ramdisk..."
-	./tools_boeffla/mkbootfs /home/llama/kernel/B14CKB1RD_Kernel_G2_Ramdisk/ramdisk_aosp/  | gzip > /home/llama/kernel/out/ramdisk.gz
-	ramdisk=/home/llama/kernel/out/ramdisk.gz
-
+	./mkbootfs $ramdisk | gzip > /home/llama/kernel/out/g2/ramdisk.gz
+	ramdisk=/home/llama/kernel/out/g2/ramdisk.gz
+else
+	echo "No ramdisk found..."
+	exit 0;
+fi
 
 echo "Making DT.img..."
 if [ -f arch/arm/boot/$kerneltype ]; then
-	./tools_boeffla/dtbTool -s 2048 -o /home/llama/kernel/out/dt.img arch/arm/boot/
+	./dtbTool -s 2048 -o /home/llama/kernel/out/g2/dt.img arch/arm/boot/
 else
 	echo "No build found..."
 	exit 0;
@@ -130,7 +154,7 @@ fi
 
 echo "Making boot.img..."
 if [ -f arch/arm/boot/"$kerneltype" ]; then
-	./tools_boeffla/mkbootimg --kernel arch/arm/boot/"$kerneltype" --ramdisk $ramdisk --cmdline "$cmdline" --base $base --pagesize $pagesize --offset $ramdisk_offset --tags-addr $tags_offset --dt /home/llama/kernel/out/dt.img -o ozip/boot.img
+	./mkbootimg --kernel /home/llama/kernel/out/g2/"$kerneltype" --ramdisk $ramdisk --cmdline "$cmdline" --base $base --pagesize $pagesize --offset $ramdisk_offset --tags-addr $tags_offset --dt /home/llama/kernel/out/g2/dt.img -o ozip/boot.img
 else
 	echo "No build found..."
 	exit 0;
@@ -143,8 +167,9 @@ echo "Kernel BUMP done!";
 
 echo "Zipping..."
 cd ozip
-zip -r ../"$kernel"-"$rom"_"$variant"-bumped.zip .
-mv ../"$kernel"-"$rom"_"$variant"-bumped.zip $build
+zip -r ../"$kernel"-"$rom"_"$variant"-bumped-R.zip .
+mv ../"$kernel"-"$rom"_"$variant"-bumped-R.zip $build
 cd ..
-rm -rf /home/llama/kernel/out/g2/*
+rm -rf /home/llama/kernel/out/g2
+mkdir /home/llama/kernel/out/g2
 echo "Done..."
