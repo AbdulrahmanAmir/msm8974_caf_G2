@@ -353,7 +353,16 @@ static ssize_t store_sampling_rate(struct kobject *a, struct attribute *b,
 				   const char *buf, size_t count)
 {
 	unsigned int input;
+<<<<<<< HEAD
 	int ret;
+=======
+	int ret = 0;
+	int mpd = strcmp(current->comm, "mpdecision");
+
+	if (mpd == 0)
+		return ret;
+
+>>>>>>> aac3273... cpufreq: Blocked mpdecision from changing values
 	ret = sscanf(buf, "%u", &input);
 	if (ret != 1)
 		return -EINVAL;
