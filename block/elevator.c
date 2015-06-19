@@ -1112,18 +1112,8 @@ ssize_t elv_iosched_store(struct request_queue *q, const char *name,
 	if (!q->elevator)
 		return count;
 
-<<<<<<< HEAD
-	if ((strlen(elevator_hard) != 0) && (! strstr(name, elevator_hard)))
-	{
-		sscanf(name, "%s", elevator_name);
-		printk(KERN_ERR "elevator: switch to %s failed due to Boeffla hard value set to %s\n", elevator_name, elevator_hard);
-		return count;
-	}
 
-	ret = elevator_change(q, name);
-=======
 	ret = __elevator_change(q, name);
->>>>>>> 1a8004d... Kernel sublevel update: 3.4.0 to 3.4.107
 	if (!ret)
 		return count;
 
